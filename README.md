@@ -74,6 +74,32 @@ const mic = new MicVad({ load: { wasm: window.fluidvad.wasmBytes }, onSpeechEnd:
 - macOS mic: call `systemPreferences.askForMediaAccess("microphone")` from main and
   set `NSMicrophoneUsageDescription` when packaging.
 
+## Fidelity
+
+Benchmarked with the same protocol as FluidAudio's `vad-benchmark`
+(per-chunk probability >= threshold, clip = speech at >=10% active chunks;
+`examples/vad_benchmark.rs`). Apple M-series, native CPU, single thread.
+
+**musan_mini50** (25 LibriVox speech + 25 MUSAN noise clips):
+
+| Backend | Accuracy | Precision | Recall | F1 |
+|---|---|---|---|---|
+| FluidAudio silero (CoreML) | 82.0% | 73.5% | 100% | 84.7% |
+| FluidAudio FSMN-VAD | 98.0% | 96.2% | 100% | 98.0% |
+| **FluidVad (Silero v6, tract)** | **98.0%** | **96.2%** | **100%** | **98.0%** |
+
+**Full MUSAN** (426 speech + 930 noise clips, 66.7 h):
+
+| Backend | Noise rejected | False-positive rate | Speech recall |
+|---|---|---|---|
+| FluidAudio silero (CoreML) | 69.8% | 30.2% | — |
+| FluidAudio FSMN-VAD | 81.9% | 18.1% | — |
+| **FluidVad (Silero v6, tract)** | **94.8%** | **5.2%** | **100%** |
+
+~327x real-time native, ~150x in wasm (Node). FluidAudio numbers from
+[FluidAudio#653](https://github.com/FluidInference/FluidAudio/pull/653)
+(its MUSAN noise run used 774 clips vs 930 here).
+
 ## Configuration
 
 | Option | Default | Meaning |
