@@ -4,3 +4,4 @@ testdata/
 models/silero_vad_16k_op15.onnx
 models/_sr_baked.onnx
 examples/electron/node_modules/
+npm/README.md

@@ -5,4 +5,5 @@ cd "$(dirname "$0")/.."
 RUSTFLAGS="-C target-feature=+simd128" wasm-pack build --target web --out-dir npm/dist --release \
   -- --config 'profile.release.opt-level="z"' --config 'profile.release.panic="abort"'
 rm -f npm/dist/package.json npm/dist/.gitignore  # npm/package.json is the real manifest
+cp README.md npm/README.md                      # npm page content, kept in sync with the repo
 echo "package ready: cd npm && npm publish --access public"
