@@ -8,8 +8,9 @@ probabilities with onnxruntime on the prepared model, matching the Rust
 pipeline exactly: 512-sample frames with 64-sample carried context, and a
 zero-padded trailing partial frame.
 
-testdata/ is git-ignored: use any real 16 kHz mono speech recording you have
-the rights to. The tests skip (loudly) when the fixtures are absent.
+The committed fixture is a public-domain JFK 1961 inaugural excerpt (see
+testdata/README.md). If you swap it, use a real 16 kHz mono recording you
+have the rights to redistribute, and commit the regenerated reference.
 """
 import os
 import shutil

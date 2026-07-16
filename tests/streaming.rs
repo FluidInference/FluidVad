@@ -2,26 +2,24 @@
 
 use fluidvad::{SileroModel, VadSegmentationConfig, VadStreamer, FRAME_SIZE};
 
-fn load_test_wav() -> Option<Vec<f32>> {
+// The fixture is committed (testdata/speech_16k.wav — JFK 1961 inaugural
+// excerpt, public domain), so a missing file is a broken checkout: fail loudly.
+fn load_test_wav() -> Vec<f32> {
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/testdata/speech_16k.wav");
-    let mut reader = hound::WavReader::open(path).ok()?;
+    let mut reader =
+        hound::WavReader::open(path).expect("committed fixture testdata/speech_16k.wav");
     let spec = reader.spec();
     assert_eq!(spec.sample_rate, 16000);
     assert_eq!(spec.channels, 1);
-    Some(
-        reader
-            .samples::<i16>()
-            .map(|s| s.unwrap() as f32 / 32768.0)
-            .collect(),
-    )
+    reader
+        .samples::<i16>()
+        .map(|s| s.unwrap() as f32 / 32768.0)
+        .collect()
 }
 
 #[test]
 fn streamer_buffers_arbitrary_chunk_sizes() {
-    let Some(samples) = load_test_wav() else {
-        eprintln!("SKIP: testdata/speech_16k.wav not present");
-        return;
-    };
+    let samples = load_test_wav();
     let model = SileroModel::new().expect("model");
     let mut streamer = VadStreamer::with_model(model, VadSegmentationConfig::default());
 
@@ -39,10 +37,7 @@ fn streamer_buffers_arbitrary_chunk_sizes() {
 
 #[test]
 fn streamer_emits_start_and_end_on_real_speech() {
-    let Some(mut samples) = load_test_wav() else {
-        eprintln!("SKIP: testdata/speech_16k.wav not present");
-        return;
-    };
+    let mut samples = load_test_wav();
     // append 1.5s of silence so the final speech run closes
     samples.extend(std::iter::repeat_n(0.0f32, 24000));
 
