@@ -28,7 +28,8 @@
       "types": "./mic.d.ts",
       "default": "./mic.js"
     },
-    "./worklet": "./worklet.js"
+    "./worklet": "./worklet.js",
+    "./dist/*": "./dist/*"
   },
   "files": [
     "index.js",

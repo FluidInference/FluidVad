@@ -16,8 +16,20 @@ export interface VadConfig {
   negativeThreshold?: number;
 }
 
-/** Initialize the wasm module once. Safe to call multiple times. */
-export function load(): Promise<void>;
+export interface LoadOptions {
+  /**
+   * Explicit wasm source (bytes, Response, URL, or compiled Module),
+   * bypassing environment detection — the escape hatch for Electron
+   * renderers with contextIsolation and for unusual bundlers.
+   */
+  wasm?: BufferSource | WebAssembly.Module | Response | URL | Promise<Response>;
+}
+
+/** Initialize the wasm module once. Safe to call multiple times (first call wins). */
+export function load(options?: LoadOptions): Promise<void>;
 
 /** Load the wasm and construct a FluidVad in one call. */
-export function createVad(options?: VadConfig): Promise<import("./dist/fluidvad.js").FluidVad>;
+export function createVad(
+  options?: VadConfig,
+  loadOptions?: LoadOptions
+): Promise<import("./dist/fluidvad.js").FluidVad>;

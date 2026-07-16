@@ -1,0 +1,19 @@
+{
+  "name": "fluidvad-electron-example",
+  "version": "0.1.0",
+  "private": true,
+  "description": "FluidVad in Electron: mic VAD in the renderer (contextIsolation), file VAD in main.",
+  "type": "module",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "smoke": "cross-env FLUIDVAD_SMOKE=1 electron ."
+  },
+  "dependencies": {
+    "@fluidinference/fluidvad": "file:../../npm"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3",
+    "electron": "^37.0.0"
+  }
+}

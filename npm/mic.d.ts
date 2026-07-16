@@ -1,4 +1,4 @@
-import type { VadConfig } from "./index.js";
+import type { LoadOptions, VadConfig } from "./index.js";
 
 export interface MicVadOptions {
   /** Called when speech starts (seconds since capture start). */
@@ -9,6 +9,8 @@ export interface MicVadOptions {
   onFrame?: (probability: number) => void;
   /** VAD configuration. */
   vad?: VadConfig;
+  /** wasm loading override (e.g. `{ wasm: bytes }` in Electron renderers). */
+  load?: LoadOptions;
   /** Extra getUserMedia audio constraints. */
   audioConstraints?: MediaTrackConstraints;
 }

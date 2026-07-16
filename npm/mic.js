@@ -17,6 +17,8 @@ export class MicVad {
    * @param {(audio: Float32Array, startTime: number, endTime: number) => void} [options.onSpeechEnd]
    * @param {(probability: number) => void} [options.onFrame]
    * @param {import('./index.js').VadConfig} [options.vad] VAD configuration.
+   * @param {import('./index.js').LoadOptions} [options.load] wasm loading override
+   *   (e.g. `{ wasm: bytes }` in Electron renderers with contextIsolation).
    * @param {MediaTrackConstraints} [options.audioConstraints] extra getUserMedia constraints.
    */
   constructor(options = {}) {
@@ -36,7 +38,7 @@ export class MicVad {
   /** Request the microphone and start emitting callbacks. */
   async start() {
     if (this._context) return;
-    this._vad = await createVad(this.options.vad);
+    this._vad = await createVad(this.options.vad, this.options.load);
 
     this._stream = await navigator.mediaDevices.getUserMedia({
       audio: {

@@ -51,6 +51,31 @@ const segments = vad.segment(samples);
 // [{ startTime: 0.9, endTime: 4.21 }, ...]
 ```
 
+## Electron
+
+Works in both processes with no native modules — nothing to `electron-rebuild`,
+no per-arch prebuilds, no extra binaries to sign. Runnable example in
+[`examples/electron`](examples/electron) (mic UI + headless smoke mode, CI-tested
+on macOS and Windows).
+
+- **Main / preload (Node env):** `import { createVad } from "@fluidinference/fluidvad"`
+  works as-is; the wasm is read from disk (asar-transparent).
+- **Renderer with `contextIsolation`:** the renderer cannot `fetch()` `file://`
+  URLs, so hand the wasm bytes over from the preload:
+
+```js
+// preload.cjs
+const wasmPath = require.resolve("@fluidinference/fluidvad/dist/fluidvad_bg.wasm");
+contextBridge.exposeInMainWorld("fluidvad", { wasmBytes: new Uint8Array(fs.readFileSync(wasmPath)) });
+
+// renderer
+const mic = new MicVad({ load: { wasm: window.fluidvad.wasmBytes }, onSpeechEnd: ... });
+```
+
+- CSP: add `'wasm-unsafe-eval'` to `script-src` (compiles wasm without enabling JS `eval`).
+- macOS mic: call `systemPreferences.askForMediaAccess("microphone")` from main and
+  set `NSMicrophoneUsageDescription` when packaging.
+
 ## Rust
 
 ```bash

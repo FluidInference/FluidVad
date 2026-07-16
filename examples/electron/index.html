@@ -1,0 +1,25 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'unsafe-inline'"
+    />
+    <title>FluidVad — Electron</title>
+    <style>
+      body { font: 14px system-ui; margin: 24px; }
+      #bar { height: 18px; width: 0%; background: #4a9; transition: width 60ms linear; }
+      #barwrap { border: 1px solid #ccc; width: 100%; }
+      #status.speaking { color: #0a5; font-weight: 600; }
+      #log { margin-top: 12px; font-family: ui-monospace, monospace; font-size: 12px; white-space: pre-line; }
+    </style>
+  </head>
+  <body>
+    <h3>FluidVad</h3>
+    <div id="status">initializing…</div>
+    <div id="barwrap"><div id="bar"></div></div>
+    <div id="log"></div>
+    <script type="module" src="./renderer.js"></script>
+  </body>
+</html>
