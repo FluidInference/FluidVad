@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --check
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Test
+        run: cargo test --release
+
+  wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+      - name: Build npm package
+        run: ./scripts/build_npm.sh
+      - name: Node smoke test
+        run: |
+          node --input-type=module -e "
+          import('./npm/index.js').then(async ({ createVad }) => {
+            const vad = await createVad();
+            const silence = new Float32Array(16000);
+            const events = vad.push(silence);
+            if (vad.isSpeaking) throw new Error('silence must not trigger speech');
+            console.log('ok: frames processed, events:', events.length);
+          });
+          "

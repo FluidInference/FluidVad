@@ -1,0 +1,36 @@
+[package]
+name = "fluidvad"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Silero VAD in pure Rust (tract, CPU) — bundled ONNX model, zero config. Native + WASM."
+repository = "https://github.com/FluidInference/FluidVad"
+keywords = ["vad", "voice-activity-detection", "silero", "speech", "audio"]
+categories = ["multimedia::audio", "wasm"]
+exclude = ["examples/*.wav"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+tract-nnef = "0.21"
+
+[dev-dependencies]
+# tract-onnx is only used by examples/export_nnef.rs to regenerate the embedded NNEF artifact
+tract-onnx = "0.21"
+hound = "3.5"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+# transitive rand -> getrandom needs the JS backend on wasm32-unknown-unknown
+getrandom = { version = "0.2", features = ["js"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = "debuginfo"
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-O3", "--enable-simd"]

@@ -1,0 +1,47 @@
+{
+  "name": "@fluidinference/fluidvad",
+  "version": "0.1.0",
+  "description": "Silero VAD (v6) compiled to WebAssembly — model bundled, zero config, no runtime downloads. Browser + Node.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FluidInference/FluidVad.git"
+  },
+  "keywords": [
+    "vad",
+    "voice-activity-detection",
+    "silero",
+    "speech",
+    "audio",
+    "wasm",
+    "webassembly"
+  ],
+  "type": "module",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./mic": {
+      "types": "./mic.d.ts",
+      "default": "./mic.js"
+    },
+    "./worklet": "./worklet.js"
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "mic.js",
+    "mic.d.ts",
+    "worklet.js",
+    "dist/fluidvad.js",
+    "dist/fluidvad.d.ts",
+    "dist/fluidvad_bg.wasm",
+    "dist/fluidvad_bg.wasm.d.ts",
+    "LICENSE",
+    "SILERO_LICENSE"
+  ],
+  "sideEffects": false
+}
