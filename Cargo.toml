@@ -3,11 +3,10 @@ name = "fluidvad"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-description = "Silero VAD in pure Rust (tract, CPU) — bundled ONNX model, zero config. Native + WASM."
+description = "Rust/wasm core for @fluidinference/fluidvad — Silero VAD via tract, model embedded."
 repository = "https://github.com/FluidInference/FluidVad"
-keywords = ["vad", "voice-activity-detection", "silero", "speech", "audio"]
-categories = ["multimedia::audio", "wasm"]
-exclude = ["examples/*.wav"]
+# build source for the npm package, not published to crates.io
+publish = false
 
 [lib]
 crate-type = ["cdylib", "rlib"]

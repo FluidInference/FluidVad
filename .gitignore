@@ -1,5 +1,4 @@
 target/
-pkg-node/
 npm/dist/
 testdata/
 models/silero_vad_16k_op15.onnx

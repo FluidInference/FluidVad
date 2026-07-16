@@ -1,26 +1,23 @@
 # FluidVad
 
-Silero VAD (v6) in pure Rust — **model bundled, zero config, no runtime downloads**.
-One core, two targets: native ([crates.io](https://crates.io/crates/fluidvad)) and
-WebAssembly ([npm](https://www.npmjs.com/package/@fluidinference/fluidvad)).
+**Voice activity detection for npm — Silero VAD (v6) compiled to WebAssembly.
+Model bundled, zero config, no runtime downloads.** Works in the browser,
+Node, and Electron (both processes) on macOS and Windows.
 
-- **CPU-only, pure Rust** — ONNX inference via [tract](https://github.com/sonos/tract);
-  no onnxruntime, no C++ linkage, no platform-specific binaries.
+- **No native modules** — pure wasm. Nothing to `electron-rebuild`, no
+  per-arch prebuilds, no onnxruntime peer dependency, no extra binaries to sign.
 - **Model embedded** — the 1.3 MB Silero v6 16 kHz graph ships inside the
-  binary/`.wasm`. `npm install` / `cargo add` and go; nothing fetched at runtime.
-- **Streaming + offline** — `SpeechStart`/`SpeechEnd` events with hysteresis, or
-  whole-buffer segmentation. State machine behavior matches
-  [FluidAudio](https://github.com/FluidInference/FluidAudio)'s Swift `VadManager`.
-- **Fast enough everywhere** — ~150× real-time in wasm (Node, Apple M-series),
-  faster native. A 32 ms frame costs well under a millisecond.
-
-## npm (browser + Node)
+  `.wasm` (5.3 MB raw, 2.3 MB gzipped total). `npm install` and go; nothing
+  fetched at runtime, fully offline.
+- **Streaming + offline** — `SpeechStart`/`SpeechEnd` events with hysteresis,
+  or whole-buffer segmentation. ~150× real-time; a 32 ms frame costs well
+  under a millisecond.
 
 ```bash
 npm i @fluidinference/fluidvad
 ```
 
-Microphone with callbacks (browser):
+## Microphone (browser / Electron renderer)
 
 ```js
 import { MicVad } from "@fluidinference/fluidvad/mic";
@@ -35,7 +32,7 @@ const mic = new MicVad({
 await mic.start();
 ```
 
-Buffers (browser or Node):
+## Buffers (Node / Electron main / browser)
 
 ```js
 import { createVad } from "@fluidinference/fluidvad";
@@ -51,15 +48,16 @@ const segments = vad.segment(samples);
 // [{ startTime: 0.9, endTime: 4.21 }, ...]
 ```
 
+Input is always **16 kHz mono f32** in `[-1, 1]`. The model consumes
+512-sample frames (32 ms); `push` buffers partial frames internally.
+
 ## Electron
 
-Works in both processes with no native modules — nothing to `electron-rebuild`,
-no per-arch prebuilds, no extra binaries to sign. Runnable example in
-[`examples/electron`](examples/electron) (mic UI + headless smoke mode, CI-tested
-on macOS and Windows).
+Runnable example in [`examples/electron`](examples/electron) (mic UI +
+headless smoke mode, CI-tested on macOS and Windows).
 
-- **Main / preload (Node env):** `import { createVad } from "@fluidinference/fluidvad"`
-  works as-is; the wasm is read from disk (asar-transparent).
+- **Main / preload (Node env):** `createVad()` works as-is; the wasm is read
+  from disk (asar-transparent).
 - **Renderer with `contextIsolation`:** the renderer cannot `fetch()` `file://`
   URLs, so hand the wasm bytes over from the preload:
 
@@ -76,31 +74,6 @@ const mic = new MicVad({ load: { wasm: window.fluidvad.wasmBytes }, onSpeechEnd:
 - macOS mic: call `systemPreferences.askForMediaAccess("microphone")` from main and
   set `NSMicrophoneUsageDescription` when packaging.
 
-## Rust
-
-```bash
-cargo add fluidvad
-```
-
-```rust
-use fluidvad::{SileroModel, VadStreamer, VadSegmentationConfig, segment_speech};
-
-// offline
-let model = SileroModel::new()?;
-let segments = segment_speech(&model, &samples, &VadSegmentationConfig::default())?;
-
-// streaming
-let mut streamer = VadStreamer::with_model(model, VadSegmentationConfig::default());
-for result in streamer.push(&chunk)? {
-    if let Some(event) = result.event {
-        println!("{:?} at {:.2}s", event.kind, event.time_seconds());
-    }
-}
-```
-
-Input is always **16 kHz mono f32** in `[-1, 1]`. The model consumes
-512-sample frames (32 ms); `push` buffers partial frames internally.
-
 ## Configuration
 
 | Option | Default | Meaning |
@@ -112,23 +85,27 @@ Input is always **16 kHz mono f32** in `[-1, 1]`. The model consumes
 | `maxSpeechDuration` | 14 s | force-split longer segments at the best silence |
 | `speechPadding` | 0.1 s | padding around each segment |
 
-## How the model is prepared
+## Development
 
-Upstream `silero_vad_16k_op15.onnx` contains `If` nodes whose branches disagree
-on rank — onnxruntime broadcasts through it, strict runtimes cannot. We bake
+The wasm is built from a Rust core (`src/`) using [tract](https://github.com/sonos/tract)
+for CPU inference — no onnxruntime anywhere.
+
+Upstream Silero ONNX contains `If` nodes whose branches disagree on rank —
+onnxruntime broadcasts through it, strict runtimes cannot. We bake
 `sr = 16000` as a constant, fix the input shapes, and constant-fold with
 onnxruntime's basic optimizer, which eliminates every `If`
 (`scripts/prepare_model.py`, **bit-exact** with upstream). The result is
-pre-compiled to NNEF (`examples/export_nnef.rs`) so the shipped library only
+pre-compiled to NNEF (`examples/export_nnef.rs`) so the shipped wasm only
 carries tract's lightweight loader. Per-frame parity vs onnxruntime is
-asserted in CI-runnable tests (`tests/model_parity.rs`).
-
-## Building
+asserted in tests (`tests/model_parity.rs`); the segmentation state machine
+is ported from [FluidAudio](https://github.com/FluidInference/FluidAudio)'s
+Swift `VadManager` and unit-tested with synthetic probability sequences.
 
 ```bash
-cargo test --release            # native tests
-./scripts/build_npm.sh          # wasm + npm package into npm/
-python3 scripts/prepare_model.py  # regenerate the model artifacts (needs onnx, onnxruntime)
+cargo test --release              # core + parity tests
+./scripts/build_npm.sh            # build the npm package into npm/
+python3 scripts/prepare_model.py  # regenerate model artifacts (needs onnx, onnxruntime)
+cd examples/electron && npm i && FLUIDVAD_SMOKE=1 npx electron .   # headless check
 ```
 
 ## License
