@@ -135,14 +135,63 @@ fn close_segments_share_padding_without_overlap() {
 }
 
 #[test]
-fn pinned_negative_threshold_derives_entry_threshold() {
+fn pinned_negative_threshold_only_pins_the_exit() {
     let cfg = VadSegmentationConfig {
         negative_threshold: Some(0.2),
         ..VadSegmentationConfig::default()
     };
-    // entry = 0.2 + 0.15 = 0.35: probs of 0.4 must now trigger
+    // entry stays at `threshold` (0.5): probs of 0.4 must NOT trigger
     let mut probs = vec![0.40f32; 30];
     probs.extend(vec![0.05f32; 40]);
     let segs = segment_from_probabilities(&probs, s(probs.len()), &cfg);
-    assert_eq!(segs.len(), 1, "{segs:?}");
+    assert!(
+        segs.is_empty(),
+        "entry threshold must not be derived from the pinned exit: {segs:?}"
+    );
+
+    // exit is pinned at 0.2: a dip to 0.3 (below the default derived exit of
+    // 0.35 but above the pinned 0.2) must not close the segment
+    let mut probs = vec![0.95f32; 30];
+    probs.extend(vec![0.30f32; 30]);
+    probs.extend(vec![0.95f32; 30]);
+    probs.extend(vec![0.05f32; 40]);
+    let segs = segment_from_probabilities(&probs, s(probs.len()), &cfg);
+    assert_eq!(
+        segs.len(),
+        1,
+        "pinned exit must keep the segment open: {segs:?}"
+    );
+}
+
+#[test]
+fn config_validation_rejects_bad_values() {
+    let ok = VadSegmentationConfig::default();
+    assert!(ok.validate().is_ok());
+    let nan = VadSegmentationConfig {
+        threshold: f32::NAN,
+        ..VadSegmentationConfig::default()
+    };
+    assert!(nan.validate().is_err(), "NaN threshold must be rejected");
+    let inverted = VadSegmentationConfig {
+        negative_threshold: Some(0.9),
+        threshold: 0.5,
+        ..VadSegmentationConfig::default()
+    };
+    assert!(
+        inverted.validate().is_err(),
+        "exit above entry must be rejected"
+    );
+    let neg = VadSegmentationConfig {
+        min_silence_duration: -1.0,
+        ..VadSegmentationConfig::default()
+    };
+    assert!(neg.validate().is_err());
+    let inf_max = VadSegmentationConfig {
+        max_speech_duration: f64::INFINITY,
+        ..VadSegmentationConfig::default()
+    };
+    assert!(
+        inf_max.validate().is_ok(),
+        "infinite max speech disables splitting and is legal"
+    );
 }

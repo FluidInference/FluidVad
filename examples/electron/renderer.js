@@ -17,9 +17,10 @@ if (window.fluidvad.isSmoke) {
   // headless verification: wasm loads + inference runs in this renderer
   try {
     const vad = await createVad(undefined, loadOptions);
-    const events = vad.push(new Float32Array(32000)); // 2 s of silence
+    const SMOKE_SAMPLES = 32768; // 64 whole frames ≈ 2 s of silence
+    const events = vad.push(new Float32Array(SMOKE_SAMPLES));
     if (vad.isSpeaking) throw new Error("silence must not trigger speech");
-    window.fluidvad.reportSmoke({ ok: true, frames: 32000 / 512, isSpeaking: vad.isSpeaking, events: events.length });
+    window.fluidvad.reportSmoke({ ok: true, frames: SMOKE_SAMPLES / 512, isSpeaking: vad.isSpeaking, events: events.length });
   } catch (e) {
     window.fluidvad.reportSmoke({ ok: false, error: String(e && e.stack ? e.stack : e) });
   }

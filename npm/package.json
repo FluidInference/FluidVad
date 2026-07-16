@@ -44,5 +44,7 @@
     "LICENSE",
     "SILERO_LICENSE"
   ],
-  "sideEffects": false
+  "sideEffects": [
+    "./worklet.js"
+  ]
 }

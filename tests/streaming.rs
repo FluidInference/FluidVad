@@ -31,7 +31,10 @@ fn streamer_buffers_arbitrary_chunk_sizes() {
         results.extend(streamer.push(chunk).expect("push"));
     }
     assert_eq!(results.len(), samples.len() / FRAME_SIZE);
-    assert_eq!(streamer.processed_samples(), results.len() * FRAME_SIZE);
+    assert_eq!(
+        streamer.processed_samples(),
+        (results.len() * FRAME_SIZE) as u64
+    );
 }
 
 #[test]

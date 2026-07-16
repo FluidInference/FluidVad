@@ -14,14 +14,16 @@ import path from "node:path";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const smoke = process.env.FLUIDVAD_SMOKE === "1";
 
+// 64 whole frames (64 × 512 = 32768 samples = 2.048 s of silence)
+const SMOKE_SAMPLES = 32768;
+
 /** Main-process check: package Node path works (Electron main = Node env). */
 async function mainProcessVad() {
-  const { createVad } = await import("@fluidinference/fluidvad");
+  const { createVad, FluidVad } = await import("@fluidinference/fluidvad");
   const vad = await createVad();
-  // 2s of silence exercises load + inference + state machine end-to-end
-  const events = vad.push(new Float32Array(32000));
+  const events = vad.push(new Float32Array(SMOKE_SAMPLES));
   if (vad.isSpeaking) throw new Error("silence must not trigger speech");
-  return { frames: 32000 / 512, events: events.length };
+  return { frames: SMOKE_SAMPLES / FluidVad.frameSize(), events: events.length };
 }
 
 async function createWindow() {
@@ -40,7 +42,7 @@ async function createWindow() {
   return win;
 }
 
-app.whenReady().then(async () => {
+async function run() {
   // macOS: prompt for the microphone before the renderer asks (no-op elsewhere)
   if (process.platform === "darwin" && !smoke) {
     await systemPreferences.askForMediaAccess("microphone");
@@ -63,11 +65,20 @@ app.whenReady().then(async () => {
     failed = true;
   }
 
+  let settle;
   const rendererResult = new Promise((resolve) => {
+    settle = resolve;
     ipcMain.once("smoke-result", (_e, payload) => resolve(payload));
-    setTimeout(() => resolve({ ok: false, error: "renderer timeout (20s)" }), 20000);
   });
-  await createWindow();
+  try {
+    await createWindow();
+  } catch (e) {
+    settle({ ok: false, error: `window creation failed: ${e}` });
+  }
+  // start the watchdog only after the page has loaded (or failed) — a cold
+  // first Electron launch on a CI runner shouldn't eat the renderer's budget
+  setTimeout(() => settle({ ok: false, error: "renderer timeout (20s)" }), 20000);
+
   const r = await rendererResult;
   if (r.ok) {
     console.log(`[smoke] renderer ok: ${r.frames} frames, isSpeaking=${r.isSpeaking}`);
@@ -76,6 +87,19 @@ app.whenReady().then(async () => {
     failed = true;
   }
   app.exit(failed ? 1 : 0);
-});
+}
 
-app.on("window-all-closed", () => app.quit());
+app.whenReady().then(() =>
+  run().catch((e) => {
+    // no unhandled-rejection hangs: any failure exits nonzero (CI would
+    // otherwise sit at the job timeout)
+    console.error(smoke ? "[smoke] FAILED:" : "[main] error:", e);
+    app.exit(1);
+  })
+);
+
+// In smoke mode only app.exit() decides the exit code — a closing window
+// (Cmd+Q, session logout) must not convert an incomplete run into a pass.
+app.on("window-all-closed", () => {
+  if (!smoke) app.quit();
+});

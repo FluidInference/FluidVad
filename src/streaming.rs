@@ -18,7 +18,9 @@ pub enum VadStreamEventKind {
 pub struct VadStreamEvent {
     pub kind: VadStreamEventKind,
     /// Sample index the boundary refers to (padding already applied).
-    pub sample_index: usize,
+    /// u64: a continuous 16 kHz stream overflows u32 after ~74 hours, which is
+    /// a reachable session length on the wasm32 target where usize is 32-bit.
+    pub sample_index: u64,
 }
 
 impl VadStreamEvent {
@@ -40,8 +42,8 @@ impl VadStreamEvent {
 pub struct VadStreamState {
     pub(crate) model_state: ModelState,
     pub triggered: bool,
-    pub temp_end_sample: Option<usize>,
-    pub processed_samples: usize,
+    pub temp_end_sample: Option<u64>,
+    pub processed_samples: u64,
 }
 
 impl VadStreamState {
@@ -91,27 +93,38 @@ impl VadStreamer {
         self.pending.extend_from_slice(samples);
         let mut results = Vec::with_capacity(self.pending.len() / FRAME_SIZE);
         let mut offset = 0;
+        let mut error = None;
         while self.pending.len() - offset >= FRAME_SIZE {
             let frame = &self.pending[offset..offset + FRAME_SIZE];
-            let (probability, model_state) =
-                self.model.process_frame(frame, &self.state.model_state)?;
-            let (next, event) = streaming_state_machine(
-                probability,
-                FRAME_SIZE,
-                model_state,
-                self.state.clone(),
-                &self.config,
-            );
-            self.state = next;
-            results.push(VadStreamFrameResult { probability, event });
-            offset += FRAME_SIZE;
+            match self.model.process_frame(frame, &self.state.model_state) {
+                Ok((probability, model_state)) => {
+                    let event = streaming_state_machine(
+                        probability,
+                        FRAME_SIZE,
+                        model_state,
+                        &mut self.state,
+                        &self.config,
+                    );
+                    results.push(VadStreamFrameResult { probability, event });
+                    offset += FRAME_SIZE;
+                }
+                Err(e) => {
+                    error = Some(e);
+                    break;
+                }
+            }
         }
+        // drain exactly the consumed prefix — even on error, so a retry never
+        // replays frames the model state has already seen
         self.pending.drain(..offset);
-        Ok(results)
+        match error {
+            Some(e) => Err(e),
+            None => Ok(results),
+        }
     }
 
     /// Total samples consumed so far (excludes buffered partial frame).
-    pub fn processed_samples(&self) -> usize {
+    pub fn processed_samples(&self) -> u64 {
         self.state.processed_samples
     }
 
@@ -130,58 +143,59 @@ impl VadStreamer {
     pub fn model(&self) -> &SileroModel {
         &self.model
     }
+
+    /// The configuration this streamer was built with.
+    pub fn config(&self) -> &VadSegmentationConfig {
+        &self.config
+    }
 }
 
-/// The pure state machine, exposed for unit testing with synthetic probabilities.
-/// Mirrors FluidAudio's `streamingStateMachine` exactly.
+/// The pure state machine. Mirrors FluidAudio's `streamingStateMachine`.
 pub(crate) fn streaming_state_machine(
     probability: f32,
     chunk_sample_count: usize,
     model_state: ModelState,
-    state: VadStreamState,
+    state: &mut VadStreamState,
     config: &VadSegmentationConfig,
-) -> (VadStreamState, Option<VadStreamEvent>) {
-    let mut next = state;
-    next.model_state = model_state;
-    next.processed_samples += chunk_sample_count;
+) -> Option<VadStreamEvent> {
+    state.model_state = model_state;
+    state.processed_samples += chunk_sample_count as u64;
 
     let threshold = config.effective_threshold();
     let negative_threshold = config.effective_negative_threshold();
     let sr = SAMPLE_RATE as f64;
-    let speech_pad_samples = (config.speech_padding * sr) as usize;
-    let min_silence_samples = (config.min_silence_duration * sr) as usize;
-
-    let mut event = None;
+    let speech_pad_samples = (config.speech_padding * sr) as u64;
+    let min_silence_samples = (config.min_silence_duration * sr) as u64;
 
     if probability >= threshold {
-        next.temp_end_sample = None;
-        if !next.triggered {
-            next.triggered = true;
-            let raw_start = next.processed_samples as i64
-                - speech_pad_samples as i64
-                - chunk_sample_count as i64;
-            event = Some(VadStreamEvent {
+        state.temp_end_sample = None;
+        if !state.triggered {
+            state.triggered = true;
+            let raw_start = state
+                .processed_samples
+                .saturating_sub(speech_pad_samples + chunk_sample_count as u64);
+            return Some(VadStreamEvent {
                 kind: VadStreamEventKind::SpeechStart,
-                sample_index: raw_start.max(0) as usize,
+                sample_index: raw_start,
             });
         }
-    } else if probability < negative_threshold && next.triggered {
-        if next.temp_end_sample.is_none() {
-            next.temp_end_sample = Some(next.processed_samples);
+    } else if probability < negative_threshold && state.triggered {
+        if state.temp_end_sample.is_none() {
+            state.temp_end_sample = Some(state.processed_samples);
         }
-        if let Some(silence_start) = next.temp_end_sample {
-            if next.processed_samples - silence_start >= min_silence_samples {
+        if let Some(silence_start) = state.temp_end_sample {
+            if state.processed_samples - silence_start >= min_silence_samples {
                 let raw_end =
-                    silence_start as i64 + speech_pad_samples as i64 - chunk_sample_count as i64;
-                next.triggered = false;
-                next.temp_end_sample = None;
-                event = Some(VadStreamEvent {
+                    (silence_start + speech_pad_samples).saturating_sub(chunk_sample_count as u64);
+                state.triggered = false;
+                state.temp_end_sample = None;
+                return Some(VadStreamEvent {
                     kind: VadStreamEventKind::SpeechEnd,
-                    sample_index: raw_end.max(0) as usize,
+                    sample_index: raw_end,
                 });
             }
         }
     }
 
-    (next, event)
+    None
 }

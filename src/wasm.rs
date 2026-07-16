@@ -86,9 +86,11 @@ pub struct VadEvent {
     /// `true` for SpeechStart, `false` for SpeechEnd.
     #[wasm_bindgen(js_name = isStart, readonly)]
     pub is_start: bool,
-    /// Boundary position in samples (16 kHz, padding applied).
+    /// Boundary position in samples (16 kHz, padding applied). f64 so long
+    /// sessions are exact in JS (u64 would surface as BigInt; usize is 32-bit
+    /// on wasm and wraps after ~74 hours of audio).
     #[wasm_bindgen(js_name = sampleIndex, readonly)]
-    pub sample_index: usize,
+    pub sample_index: f64,
     /// Boundary position in seconds.
     #[wasm_bindgen(js_name = timeSeconds, readonly)]
     pub time_seconds: f64,
@@ -114,9 +116,12 @@ pub struct FluidVad {
 #[wasm_bindgen]
 impl FluidVad {
     /// Build the VAD (parses + optimizes the embedded model; do this once).
+    /// Throws if any option is out of range (NaN, negative durations,
+    /// thresholds outside [0, 1], negativeThreshold above threshold).
     #[wasm_bindgen(constructor)]
     pub fn new(options: Option<VadOptions>) -> Result<FluidVad, JsError> {
         let config = options.unwrap_or_default().to_config();
+        config.validate().map_err(|e| JsError::new(&e))?;
         let streamer = VadStreamer::new(config).map_err(|e| JsError::new(&e.to_string()))?;
         Ok(FluidVad {
             streamer,
@@ -143,7 +148,7 @@ impl FluidVad {
             if let Some(e) = r.event {
                 events.push(VadEvent {
                     is_start: e.is_start(),
-                    sample_index: e.sample_index,
+                    sample_index: e.sample_index as f64,
                     time_seconds: e.time_seconds(),
                 });
             }
@@ -151,10 +156,10 @@ impl FluidVad {
         Ok(events)
     }
 
-    /// Offline: segment a whole buffer into speech regions.
+    /// Offline: segment a whole buffer into speech regions, using the same
+    /// configuration this instance was constructed with.
     pub fn segment(&self, samples: &[f32]) -> Result<Vec<Segment>, JsError> {
-        let config = VadSegmentationConfig::default();
-        segment_speech(self.streamer.model(), samples, &config)
+        segment_speech(self.streamer.model(), samples, self.streamer.config())
             .map(|segs| {
                 segs.into_iter()
                     .map(|s| Segment {

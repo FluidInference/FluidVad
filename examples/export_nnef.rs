@@ -1,7 +1,9 @@
 //! Regenerate the embedded NNEF artifact from the prepared ONNX model.
 //!
-//! ONNX parsing + graph optimization happen here, at build time; the shipped
-//! library only carries the lightweight tract-nnef loader.
+//! ONNX parsing + protobuf handling happen here, at build time; the shipped
+//! library only carries the lightweight tract-nnef loader. Note the load-time
+//! `into_optimized()` in `SileroModel::new` is still required — NNEF cannot
+//! serialize tract's codegen ops, so the final optimize pass runs at load.
 //!
 //! Usage: cargo run --release --example export_nnef
 

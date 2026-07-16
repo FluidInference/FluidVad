@@ -139,14 +139,24 @@ impl SileroModel {
         ))
     }
 
-    /// Speech probability for every full frame in `samples` (tail shorter than a frame is dropped).
+    /// Speech probability for every frame in `samples`. A trailing partial
+    /// frame is zero-padded and scored too (as FluidAudio does), so speech in
+    /// the final <32 ms of a clip is not silently dropped.
     pub fn probabilities(&self, samples: &[f32]) -> Result<Vec<f32>, FluidVadError> {
         let mut state = ModelState::initial();
-        let mut probs = Vec::with_capacity(samples.len() / FRAME_SIZE);
-        for frame in samples.chunks_exact(FRAME_SIZE) {
+        let mut probs = Vec::with_capacity(samples.len().div_ceil(FRAME_SIZE));
+        let mut chunks = samples.chunks_exact(FRAME_SIZE);
+        for frame in &mut chunks {
             let (p, next) = self.process_frame(frame, &state)?;
             probs.push(p);
             state = next;
+        }
+        let tail = chunks.remainder();
+        if !tail.is_empty() {
+            let mut padded = vec![0.0f32; FRAME_SIZE];
+            padded[..tail.len()].copy_from_slice(tail);
+            let (p, _) = self.process_frame(&padded, &state)?;
+            probs.push(p);
         }
         Ok(probs)
     }

@@ -29,7 +29,11 @@ out = os.path.join(MODELS, "silero_vad_16k_v6.onnx")
 
 if not os.path.exists(src):
     print(f"downloading {UPSTREAM}")
-    urllib.request.urlretrieve(UPSTREAM, src)
+    # download to a temp path and rename so an interrupted download never
+    # leaves a truncated file that the exists() check would trust forever
+    tmp = src + ".part"
+    urllib.request.urlretrieve(UPSTREAM, tmp)
+    os.replace(tmp, src)
 
 m = onnx.load(src)
 g = m.graph

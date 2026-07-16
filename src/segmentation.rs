@@ -53,21 +53,71 @@ impl Default for VadSegmentationConfig {
 }
 
 impl VadSegmentationConfig {
-    /// Entry threshold, honoring a pinned negative threshold the same way FluidAudio does:
-    /// when `negative_threshold` is set, entry = negative + offset (capped at 1.0).
+    /// Entry threshold. Always `threshold`.
+    ///
+    /// Deviation from FluidAudio: Swift derives the entry threshold from a
+    /// pinned negative (`negative + offset`) because its entry threshold lives
+    /// on a different struct. Here both are fields of this config, so silently
+    /// discarding a user-set `threshold` would be a footgun — pinning
+    /// `negative_threshold` only pins the exit threshold.
     pub fn effective_threshold(&self) -> f32 {
-        match self.negative_threshold {
-            Some(negative) => (negative + self.negative_threshold_offset).min(1.0),
-            None => self.threshold,
-        }
+        self.threshold
     }
 
     /// Working exit threshold for hysteresis (Silero heuristic, override escape hatch).
     pub fn effective_negative_threshold(&self) -> f32 {
         match self.negative_threshold {
             Some(v) => v,
-            None => (self.effective_threshold() - self.negative_threshold_offset).max(0.01),
+            None => (self.threshold - self.negative_threshold_offset).max(0.01),
         }
+    }
+
+    /// Validate ranges (mirrors FluidAudio's preconditions), rejecting NaN.
+    pub fn validate(&self) -> Result<(), String> {
+        let in_unit = |v: f32| !v.is_nan() && (0.0..=1.0).contains(&v);
+        if !in_unit(self.threshold) {
+            return Err(format!(
+                "threshold must be in [0, 1], got {}",
+                self.threshold
+            ));
+        }
+        if let Some(n) = self.negative_threshold {
+            if !in_unit(n) {
+                return Err(format!("negativeThreshold must be in [0, 1], got {n}"));
+            }
+            if n > self.threshold {
+                return Err(format!(
+                    "negativeThreshold ({n}) must not exceed threshold ({}) — hysteresis inverts otherwise",
+                    self.threshold
+                ));
+            }
+        }
+        if self.negative_threshold_offset.is_nan() || self.negative_threshold_offset < 0.0 {
+            return Err("negativeThresholdOffset must be non-negative".into());
+        }
+        if !in_unit(self.silence_threshold_for_split) {
+            return Err("silenceThresholdForSplit must be in [0, 1]".into());
+        }
+        for (name, v) in [
+            ("minSpeechDuration", self.min_speech_duration),
+            ("minSilenceDuration", self.min_silence_duration),
+            ("speechPadding", self.speech_padding),
+            ("minSilenceAtMaxSpeech", self.min_silence_at_max_speech),
+        ] {
+            if !v.is_finite() || v < 0.0 {
+                return Err(format!(
+                    "{name} must be a non-negative finite number, got {v}"
+                ));
+            }
+        }
+        // NaN and non-positive are rejected; +inf is allowed (disables splitting)
+        if self.max_speech_duration.is_nan() || self.max_speech_duration <= 0.0 {
+            return Err(format!(
+                "maxSpeechDuration must be positive (or infinite to disable), got {}",
+                self.max_speech_duration
+            ));
+        }
+        Ok(())
     }
 }
 

@@ -1,18 +1,32 @@
 export { FluidVad, VadOptions, VadEvent, Segment } from "./dist/fluidvad.js";
 
-/** User-facing configuration; all fields optional, defaults match Silero. */
+/**
+ * User-facing configuration; all fields optional, defaults match Silero.
+ * Out-of-range values (NaN, negatives, thresholds outside [0, 1]) make the
+ * FluidVad constructor throw.
+ */
 export interface VadConfig {
-  /** Entry threshold (default 0.5). */
+  /** Entry threshold: a frame is speech at probability ≥ this (default 0.5). */
   threshold?: number;
-  /** Minimum speech run to keep, seconds (default 0.15). */
+  /**
+   * Minimum speech run to keep, seconds (default 0.15).
+   * Applies to `segment()` only — streaming `push()` events fire immediately.
+   */
   minSpeechDuration?: number;
-  /** Silence needed to close a segment, seconds (default 0.75). */
+  /** Silence needed to close speech, seconds (default 0.75). */
   minSilenceDuration?: number;
-  /** Split segments longer than this, seconds (default 14). */
+  /**
+   * Split segments longer than this, seconds (default 14).
+   * Applies to `segment()` only — streaming `push()` never force-splits.
+   */
   maxSpeechDuration?: number;
-  /** Padding added around each segment, seconds (default 0.1). */
+  /** Padding added around each segment / boundary event, seconds (default 0.1). */
   speechPadding?: number;
-  /** Pin the exit threshold (default: threshold - 0.15). */
+  /**
+   * Pin the exit threshold of the hysteresis (default: threshold − 0.15).
+   * Only affects when speech *ends*; the entry threshold stays `threshold`.
+   * Must not exceed `threshold`.
+   */
   negativeThreshold?: number;
 }
 
