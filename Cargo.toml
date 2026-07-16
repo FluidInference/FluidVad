@@ -1,6 +1,6 @@
 [package]
 name = "fluidvad"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 license = "MIT"
 description = "Rust/wasm core for @fluidinference/fluidvad — Silero VAD via tract, model embedded."

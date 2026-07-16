@@ -1,6 +1,6 @@
 {
   "name": "@fluidinference/fluidvad",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Silero VAD (v6) compiled to WebAssembly — model bundled, zero config, no runtime downloads. Browser + Node.",
   "license": "MIT",
   "repository": {
