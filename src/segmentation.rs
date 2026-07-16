@@ -1,8 +1,5 @@
-//! Offline speech segmentation — Silero-style timestamp extraction.
-//!
-//! Port of FluidAudio's `VadManager+SpeechSegmentation.swift`
-//! (`detectSpeechSampleRanges`), semantics preserved exactly; the only
-//! difference is frame granularity (512-sample hop here vs 4096 there).
+//! Offline speech segmentation — Silero-style timestamp extraction
+//! (state machine adapted from FluidAudio's `VadManager+SpeechSegmentation.swift`).
 
 use crate::model::{FluidVadError, SileroModel, FRAME_SIZE, SAMPLE_RATE};
 

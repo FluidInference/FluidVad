@@ -1,7 +1,5 @@
-//! Streaming VAD with start/end events — Silero-style hysteresis.
-//!
-//! Port of FluidAudio's `VadManager+Streaming.swift` (`streamingStateMachine`),
-//! semantics preserved exactly.
+//! Streaming VAD with start/end events — Silero-style hysteresis with
+//! min-speech blip suppression and max-speech force-splitting.
 
 use crate::model::{FluidVadError, ModelState, SileroModel, FRAME_SIZE, SAMPLE_RATE};
 use crate::segmentation::VadSegmentationConfig;
@@ -44,6 +42,10 @@ pub struct VadStreamState {
     pub triggered: bool,
     pub temp_end_sample: Option<u64>,
     pub processed_samples: u64,
+    /// Start of a speech run that hasn't persisted `min_speech_duration` yet.
+    pub pending_start: Option<u64>,
+    /// Start of the confirmed speech run (for `max_speech_duration` splits).
+    pub speech_start_sample: u64,
 }
 
 impl VadStreamState {
@@ -150,7 +152,12 @@ impl VadStreamer {
     }
 }
 
-/// The pure state machine. Mirrors FluidAudio's `streamingStateMachine`.
+/// The pure streaming state machine (Silero-style hysteresis).
+///
+/// Honors the full config: `min_speech_duration` suppresses blips (a
+/// SpeechStart only fires once speech has persisted that long, backdated to
+/// the real start), and `max_speech_duration` force-splits long runs so
+/// consumers never buffer unboundedly.
 pub(crate) fn streaming_state_machine(
     probability: f32,
     chunk_sample_count: usize,
@@ -164,38 +171,165 @@ pub(crate) fn streaming_state_machine(
     let threshold = config.effective_threshold();
     let negative_threshold = config.effective_negative_threshold();
     let sr = SAMPLE_RATE as f64;
+    let chunk = chunk_sample_count as u64;
     let speech_pad_samples = (config.speech_padding * sr) as u64;
     let min_silence_samples = (config.min_silence_duration * sr) as u64;
+    let min_speech_samples = (config.min_speech_duration * sr) as u64;
+    let max_speech_samples = if config.max_speech_duration.is_infinite() {
+        u64::MAX
+    } else {
+        (config.max_speech_duration * sr) as u64
+    };
+
+    // force-split: a confirmed run that reached max_speech_duration ends now;
+    // the very same frame becomes a pending start so speech resumes promptly
+    if state.triggered && state.processed_samples - state.speech_start_sample >= max_speech_samples
+    {
+        state.triggered = false;
+        state.temp_end_sample = None;
+        state.pending_start = Some(state.processed_samples.saturating_sub(chunk));
+        return Some(VadStreamEvent {
+            kind: VadStreamEventKind::SpeechEnd,
+            sample_index: state.processed_samples,
+        });
+    }
 
     if probability >= threshold {
         state.temp_end_sample = None;
         if !state.triggered {
-            state.triggered = true;
-            let raw_start = state
-                .processed_samples
-                .saturating_sub(speech_pad_samples + chunk_sample_count as u64);
-            return Some(VadStreamEvent {
-                kind: VadStreamEventKind::SpeechStart,
-                sample_index: raw_start,
-            });
-        }
-    } else if probability < negative_threshold && state.triggered {
-        if state.temp_end_sample.is_none() {
-            state.temp_end_sample = Some(state.processed_samples);
-        }
-        if let Some(silence_start) = state.temp_end_sample {
-            if state.processed_samples - silence_start >= min_silence_samples {
-                let raw_end =
-                    (silence_start + speech_pad_samples).saturating_sub(chunk_sample_count as u64);
-                state.triggered = false;
-                state.temp_end_sample = None;
+            // record where this run began (first frame at/above threshold)
+            let run_start = *state
+                .pending_start
+                .get_or_insert(state.processed_samples.saturating_sub(chunk));
+            // confirm once the run has persisted min_speech_duration
+            if state.processed_samples - run_start >= min_speech_samples {
+                state.triggered = true;
+                state.pending_start = None;
+                state.speech_start_sample = run_start;
                 return Some(VadStreamEvent {
-                    kind: VadStreamEventKind::SpeechEnd,
-                    sample_index: raw_end,
+                    kind: VadStreamEventKind::SpeechStart,
+                    sample_index: run_start.saturating_sub(speech_pad_samples),
                 });
             }
+        }
+    } else if probability < negative_threshold {
+        if state.triggered {
+            if state.temp_end_sample.is_none() {
+                state.temp_end_sample = Some(state.processed_samples);
+            }
+            if let Some(silence_start) = state.temp_end_sample {
+                if state.processed_samples - silence_start >= min_silence_samples {
+                    let raw_end = (silence_start + speech_pad_samples).saturating_sub(chunk);
+                    state.triggered = false;
+                    state.temp_end_sample = None;
+                    return Some(VadStreamEvent {
+                        kind: VadStreamEventKind::SpeechEnd,
+                        sample_index: raw_end,
+                    });
+                }
+            }
+        } else {
+            // a pending run that fell back below the exit threshold before
+            // reaching min_speech_duration was a blip — drop it silently
+            state.pending_start = None;
         }
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::ModelState;
+
+    const F: usize = 512; // one frame
+
+    fn drive(probs: &[f32], config: &VadSegmentationConfig) -> Vec<(usize, VadStreamEvent)> {
+        let mut state = VadStreamState::initial();
+        let mut events = Vec::new();
+        for (i, &p) in probs.iter().enumerate() {
+            if let Some(e) =
+                streaming_state_machine(p, F, ModelState::default(), &mut state, config)
+            {
+                events.push((i, e));
+            }
+        }
+        events
+    }
+
+    #[test]
+    fn blip_shorter_than_min_speech_is_suppressed() {
+        // default min_speech 0.15s = 2400 samples = 4.7 frames; 3-frame blip
+        let mut probs = vec![0.05f32; 10];
+        probs.extend([0.95; 3]);
+        probs.extend([0.05; 40]);
+        let events = drive(&probs, &VadSegmentationConfig::default());
+        assert!(events.is_empty(), "{events:?}");
+    }
+
+    #[test]
+    fn start_fires_backdated_after_min_speech_persists() {
+        let mut probs = vec![0.05f32; 10];
+        probs.extend([0.95; 20]);
+        let events = drive(&probs, &VadSegmentationConfig::default());
+        assert_eq!(events.len(), 1);
+        let (fired_at, e) = events[0];
+        assert!(e.is_start());
+        // fired on the 5th speech frame (2560 >= 2400), backdated to the run
+        // start (frame 10) minus padding (1600)
+        assert_eq!(fired_at, 14);
+        assert_eq!(e.sample_index, (10 * F) as u64 - 1600);
+    }
+
+    #[test]
+    fn zero_min_speech_fires_immediately() {
+        let cfg = VadSegmentationConfig {
+            min_speech_duration: 0.0,
+            ..VadSegmentationConfig::default()
+        };
+        let mut probs = vec![0.05f32; 4];
+        probs.extend([0.95; 2]);
+        let events = drive(&probs, &cfg);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].0, 4, "must fire on the first speech frame");
+    }
+
+    #[test]
+    fn max_speech_force_splits_long_runs() {
+        let cfg = VadSegmentationConfig {
+            max_speech_duration: 1.0, // 16000 samples ≈ 31.25 frames
+            ..VadSegmentationConfig::default()
+        };
+        let mut probs = vec![0.95f32; 100];
+        probs.extend([0.05; 40]);
+        let events = drive(&probs, &cfg);
+        // start, forced end, restart, forced end, restart, ..., final silence end
+        assert!(events.len() >= 4, "{events:?}");
+        let mut expect_start = true;
+        for (_, e) in &events {
+            assert_eq!(
+                e.is_start(),
+                expect_start,
+                "events must alternate: {events:?}"
+            );
+            expect_start = !expect_start;
+        }
+        assert!(!events.last().unwrap().1.is_start(), "must end closed");
+    }
+
+    #[test]
+    fn hysteresis_band_keeps_pending_and_triggered_runs_alive() {
+        // dip into the band (between exit 0.35 and entry 0.5) must not cancel
+        // a pending run nor close a confirmed one
+        let mut probs = vec![0.95f32; 3]; // pending (needs 5 to confirm)
+        probs.extend([0.40; 2]); // band: pending survives
+        probs.extend([0.95; 4]); // resumes; run persists from frame 0
+        probs.extend([0.05; 40]);
+        let events = drive(&probs, &VadSegmentationConfig::default());
+        assert!(
+            events.first().map(|(_, e)| e.is_start()).unwrap_or(false),
+            "{events:?}"
+        );
+    }
 }

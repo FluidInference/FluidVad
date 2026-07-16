@@ -36,9 +36,11 @@ export class MicVad {
     /** buffered frames while speaking (plus rolling pre-roll), with absolute sample offsets */
     this._buffer = [];
     this._speechStartSample = 0;
-    this._prerollSamples = Math.ceil(
-      (((options.vad && options.vad.speechPadding) ?? 0.1) + 0.032) * SAMPLE_RATE
-    );
+    // pre-roll must cover the backdated start: padding + the min-speech
+    // confirmation window + one frame of margin
+    const pad = (options.vad && options.vad.speechPadding) ?? 0.1;
+    const minSpeech = (options.vad && options.vad.minSpeechDuration) ?? 0.15;
+    this._prerollSamples = Math.ceil((pad + minSpeech + 0.064) * SAMPLE_RATE);
   }
 
   /** Request the microphone and start emitting callbacks. */

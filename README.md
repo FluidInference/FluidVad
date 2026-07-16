@@ -97,9 +97,9 @@ onnxruntime's basic optimizer, which eliminates every `If`
 (`scripts/prepare_model.py`, **bit-exact** with upstream). The result is
 pre-compiled to NNEF (`examples/export_nnef.rs`) so the shipped wasm only
 carries tract's lightweight loader. Per-frame parity vs onnxruntime is
-asserted in tests (`tests/model_parity.rs`); the segmentation state machine
-is ported from [FluidAudio](https://github.com/FluidInference/FluidAudio)'s
-Swift `VadManager` and unit-tested with synthetic probability sequences.
+asserted in tests (`tests/model_parity.rs`); the hysteresis / segmentation
+state machines (adapted from [FluidAudio](https://github.com/FluidInference/FluidAudio))
+are unit-tested with synthetic probability sequences.
 
 ```bash
 cargo test --release              # core + parity tests

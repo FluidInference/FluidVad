@@ -9,15 +9,17 @@ export interface VadConfig {
   /** Entry threshold: a frame is speech at probability ≥ this (default 0.5). */
   threshold?: number;
   /**
-   * Minimum speech run to keep, seconds (default 0.15).
-   * Applies to `segment()` only — streaming `push()` events fire immediately.
+   * Minimum speech run to emit, seconds (default 0.15). Shorter blips
+   * (coughs, clicks) are suppressed; streaming SpeechStart fires once speech
+   * has persisted this long, backdated to the true start. Set 0 for
+   * immediate (per-frame) starts.
    */
   minSpeechDuration?: number;
   /** Silence needed to close speech, seconds (default 0.75). */
   minSilenceDuration?: number;
   /**
-   * Split segments longer than this, seconds (default 14).
-   * Applies to `segment()` only — streaming `push()` never force-splits.
+   * Split speech runs longer than this, seconds (default 14) — bounds
+   * utterance buffering during long monologues. `Infinity` disables.
    */
   maxSpeechDuration?: number;
   /** Padding added around each segment / boundary event, seconds (default 0.1). */
