@@ -1,5 +1,7 @@
 # FluidVad
 
+[![npm](https://img.shields.io/npm/v/@fluidinference/fluidvad.svg)](https://www.npmjs.com/package/@fluidinference/fluidvad)
+
 **Voice activity detection for npm — Silero VAD (v6) compiled to WebAssembly.
 Model bundled, zero config, no runtime downloads.** Works in the browser,
 Node, and Electron (both processes) on macOS and Windows.
@@ -15,7 +17,11 @@ Node, and Electron (both processes) on macOS and Windows.
 
 ```bash
 npm i @fluidinference/fluidvad
+pnpm add @fluidinference/fluidvad
+bun add @fluidinference/fluidvad
 ```
+
+📦 [`@fluidinference/fluidvad` on npm](https://www.npmjs.com/package/@fluidinference/fluidvad)
 
 ## Microphone (browser / Electron renderer)
 
