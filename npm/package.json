@@ -7,6 +7,10 @@
     "type": "git",
     "url": "git+https://github.com/FluidInference/FluidVad.git"
   },
+  "homepage": "https://github.com/FluidInference/FluidVad#readme",
+  "bugs": {
+    "url": "https://github.com/FluidInference/FluidVad/issues"
+  },
   "keywords": [
     "vad",
     "voice-activity-detection",
