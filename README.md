@@ -1,6 +1,7 @@
 # FluidVad
 
-[![npm](https://img.shields.io/npm/v/@fluidinference/fluidvad.svg)](https://www.npmjs.com/package/@fluidinference/fluidvad)
+[![npm](https://img.shields.io/npm/v/@fluidinference/fluidvad.svg)](https://www.npmjs.com/package/@fluidinference/fluidvad) ![NPM Downloads](https://img.shields.io/npm/dw/%40fluidinference%2Ffluidvad)
+
 
 **Voice activity detection for npm — Silero VAD (v6) compiled to WebAssembly.
 Model bundled, zero config, no runtime downloads.** Works in the browser,
